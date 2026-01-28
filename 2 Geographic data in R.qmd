@@ -1,0 +1,191 @@
+---
+title: "2 Geographic data in R"
+format: html
+---
+
+# 2 Geographic data in R
+
+## Prerequisites
+
+```{r}
+# install.packages('sf')
+# install.packages("terra")
+# install.packages("spData")
+# install.packages("spDataLarge", repos = "https://geocompr.r-universe.dev")
+
+library(sf)
+library(terra)
+library(spData)
+library(spDataLarge)
+
+```
+
+## 2.1 Introduction
+
+Fundamental Geographic Data Models - Vector (`sf`) - Points, lines, polygons - Precise, not necessarily accurate - Social sciences due to discrete borders - Raster (`terra`) - Cells of constant size - Aggregate spatially specific features - Environmental sciences due to reliance on remote sensing data
+
+These can be used separately or together.
+
+## 2.2 Vector Data
+
+### Coordinate Reference System
+
+Based on points located within a coordinate reference system (CRS).
+
+While the CRS is standardized, it is possible to use a projected CRS.
+
+**Origin - Intersection of Prime Meridian and Equator**
+
+-   Lon: `x = 0`
+-   Lat: `y = 0`
+-   Lon/Lat: `c(0, 0)`
+
+**London (deg from Origin)**
+
+-   Lon: `x = -0.1`
+-   Lat: `y = 51.5`
+-   Lon/Lat: `c(-.1, 51.5)`
+
+**London (km from projected origin)**
+
+-   Easting: `x = 530000`
+-   Northing: `y = 180000`
+-   Easting/Northing: `c(530000, 180000)`
+
+### SF Underlying Libraries
+
+-   GDAL - Reading, writing, and manipulating geographic data
+-   PROJ - Coordinate System Transformations
+-   GEOS - Planar Geometry Engine for calculating buffers and centroids on projected CRS
+-   S2 - Spherical Geometry Engine
+
+There are notes about how planar and spherical geometry engines assume projected or unprojected coordinates.
+
+TODO - Learn more about planar and spherical geometry engines and when they should be applied.
+
+## 2.2.1 Introduction to simple features
+
+Open Standard developed by OGC (Open Geospatial Consortium)
+
+Hierarchical data model to represent geometry types.
+
+Of 18, 7 are generally used in geographic research: - Point - Linestring - Polygon - Multipoint - Multilinestring - Multipolygon - Geometrycollection
+
+These are fully supported by `sf`.
+
+`sf` objects are stored as data frames with geographic data in a special column, 'geom' or 'geometry'.
+
+```{r}
+
+class(world)
+
+```
+
+```{r}
+
+names(world)
+
+```
+
+```{r}
+
+plot(world)
+
+```
+
+```{r}
+
+summary(world["lifeExp"])
+
+```
+
+```{r}
+
+world_mini <- world[1:2, 1:3]
+
+```
+
+## 2.2.2 Why use simple features?
+
+I'm going to skim through this section as the why doesn't matter very much to me at this time.
+
+## 2.2.3 Basic maps
+
+Basic visualizations (maps) are created using R's `plot()`.
+
+```{r}
+
+plot(world[3:6])
+plot(world["pop"])
+
+```
+
+```{r}
+
+world_asia <- world[world$continent == 'Asia', ]
+asia <- st_union(world_asia)
+
+```
+
+```{r}
+
+plot(world['pop'], reset = FALSE) # reset - if FALSE, keep the plot in a mode that allows adding futher map elements
+plot(asia, add = TRUE, col = 'red') # add - if TRUE, add to curent plot?
+
+```
+
+For simple mapping, `plot()`. For advanced, `tmap`.
+
+```{r}
+
+plot(world['continent'], reset = FALSE)
+cex <- sqrt(world$pop) / 10000
+world_cents <- st_centroid(world, of_largest = TRUE) # st_centroid gives the centroid of a geometry
+plot(st_geometry(world_cents), add = TRUE, cex = cex)
+
+```
+
+Below breaks because of above. Don't know how to separate the latter chunk from being affected by the former. First render of line two creates a tiny India at the bottom. Second render creates the India as specified by line two, with the expandBB argument being honored. Looked at source of book and the code printed is not actually being rendered.
+
+```{r}
+
+india <- world[world$name_long == 'India', ]
+plot(
+  st_geometry(india),
+  expandBB = c(0, 0.2, 0.1, 1),
+  col = 'gray',
+  lwd = 3,
+  reset = FALSE
+)
+plot(st_geometry(world_asia), add = TRUE)
+
+```
+
+## 2.2.4 Geometry Types
+
+This is pretty intuitive.
+
+**Singles**
+Point
+Linestring
+Polygon
+
+**Multiples**
+Multipoint
+Multilinestring
+Multipolygon
+
+**Mixes**
+Geometrycollection
+
+## 2.2.5 The sf class
+
+**Two Main Parts**
+- Geometries
+- Non-Geometries
+
+
+
+```{r}
+
+```
