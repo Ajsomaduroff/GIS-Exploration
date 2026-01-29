@@ -180,12 +180,35 @@ Geometrycollection
 
 ## 2.2.5 The sf class
 
-**Two Main Parts**
-- Geometries
-- Non-Geometries
+**Two Main Attributes**
 
+- Geometries
+- Non-geographic
 
 
 ```{r}
+lnd_point = st_point(c(0.1, 51.5)) # sfg object
+lnd_geom = st_sfc(lnd_point, crs = "EPSG:4326") # sfc object
+lnd_attrib = data.frame(
+  # data.frame object
+  name = "London",
+  temperature = 25,
+  date = as.Date("2023-06-21")
+)
+lnd_sf = st_sf(lnd_attrib, geometry = lnd_geom) # sf object
 
+lnd_sf
 ```
+
+What's the difference between and SFG and SFC object?
+
+## 2.2.6 Simple features geometries (sfg)
+
+Here's the beginning of the answer to my previous question.
+
+sfg represents gemoetry types: point, linestring, polygon, multi-versions, and collection.
+
+Functions are well named, all with a prefix of "st_" followed by the geometry type you'd like to create.
+
+
+
