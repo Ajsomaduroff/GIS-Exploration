@@ -1,0 +1,46 @@
+---
+title: "Colorado"
+format: html
+---
+
+```{r}
+
+library(sf)
+library(terra)
+library(tidyverse)
+library(spData)
+library(spDataLarge)
+
+library(tmap) # for static and interactive maps
+library(leaflet) # for interactive maps
+
+library(tigris) # for downloading county maps
+
+library(tidycensus) # For working with US Census Data
+
+```
+
+```{r}
+
+co_counties <- counties(state = 'CO', cb = TRUE, class = 'sf')
+
+```
+
+```{r}
+
+tm_shape(co_counties) +
+  tm_polygons(col = 'white', border.col = 'black') +
+  tm_layout(title = 'Colorado Counties')
+
+```
+
+```{r}
+
+tm_shape(co_counties) +
+  tm_polygons("ALAND", palette = 'Blues', title = 'Land Area')
+
+```
+
+
+```{r}
+```
