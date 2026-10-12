@@ -1,0 +1,509 @@
+---
+title: Intermediate Spatial Analysis in R - Day 2 - section 2
+author: carverd@colostate.edu; contributors @ github (ecarcelen, habpippin, ccmothes)
+output:
+  html_document: 
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    collapsed: false
+    smooth_scroll: yes
+  code_folding: hide
+  pdf_document: default
+highlight: tango
+theme: yeti
+---
+
+```{r setup, echo = FALSE}
+# set some standard parameter for the documents. 
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+```
+<br>
+
+# What Do Nighttime Lights Tell Us About a Place?
+
+Nighttime lights are a uniquely human phenomenon. Every night we capture data on this form of human emissions with the Earth Observation System VIIRS. While we expect that this data will tell us a great deal about the people living and working beneath the lights, there are still many factors we need to evaluate to back up those assumptions. 
+
+<center>
+**In this lesson, we will be assessing how the number of observations used to generate the average monthly radiance can contribute to the month-to-month variability in the dataset**.
+</center>
+
+<br>
+
+```{r block1, echo = FALSE,  }
+knitr::include_graphics("data/pngsForMarkdown/peopleLight.jpg", error = F) #for some reason include_graphics only uses doc directory
+#Photo by <a href="https://unsplash.com/@vingtcent?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Vincent Guth</a> on <a href="https://unsplash.com/s/photos/headlamps?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Unsplash</a>
+  
+```
+
+<br>
+
+
+#### Question: Could this person be affecting the monthly averages for a dark location? What if the night this image was taken was the only cloud-free capture for that month?    
+
+<details>
+  <summary>Click for an Answer</summary>
+  <blockquote> 
+  It's unlikely that a headlamp would be seen from space, but we don't know that for sure. We know that the random variability that events like this represent will be more impactful when fewer observations are present. Rather than try to answer these questions, it might be better to respect that the world is complex. Any automated task (like the one we are working on) will contain conditions that you are probably unaware of and couldn't do much about, even if you did know they existed. Those assumptions, known and unknown, carry through the analysis and have the potential to skew your results in unexpected ways. Knowing that there is a lot you don't know helps you keep your mind keen for more questions rather than set on a specific answer.    
+  </blockquote>
+</details> 
+
+<br>
+
+## Where Did We Leave Off? 
+
+At the end of the last lesson, we created a correlation between yearly average radiance and poverty/age at the census tract level for three different counties in Texas. While the trends were not convincing, this led us to consider the quality of the input data, which we will explore in this lesson.
+<br>
+
+#### Question: Is what we've seen so far still interesting enough to continue work? 
+
+<details>
+  <summary>Click for an Answer</summary>
+  <blockquote>
+  Hopefully, the answer is yes because this is an educational tutorial, after all. Yet, your answer may feel differently if you were exploring this in a professional context. Looking into one question means you can't investigate another. It is important to be aware of the [Sunk Cost Fallacy](https://en.wikipedia.org/wiki/Sunk_cost#Loss_aversion) and loss aversion as it affects your research. The more we invest in something, the less likely we are to back out.  </blockquote>
+  
+</details> 
+<br>
+
+## Counts Data
+
+The average monthly radiance values are delivered with an associated image layer that reports the number of daily observations that were used to generate the mean monthly value for each observation location. These values can range from 0-31, depending on the month. We want to ensure that we are only looking at observation locations where we have a high degree of confidence that the values represent a true mean. 
+
+There are three reasons why this is worth evaluating. 
+
+**View Angle** 
+
+The [VIIRS sensor](https://www.jpss.noaa.gov/assets/pdfs/factsheets/viirs_factsheet.pdf) captures data in a 3,000 km swath. This means there are a lot of areas that are off-nadir captures. As night lights are generally directional features (think lights on the side of the building), the angle at which the image is captured will affect the radiance observed. This means that some nightly images will have lower or higher values than the actual observed value at nadir. We can get around this problem by working only with on nadir passes, but those images occur only every 14 days or so. That timeframe severely limits our total number of observations and would require a whole new workflow based on the daily images. The second option would be to ensure you have enough observations to average out that variability. How much is enough? We'll try to find out. 
+<br>
+```{r block2, echo = FALSE}
+knitr::include_graphics("data/pngsForMarkdown/buildingLight.jpg", error = F)
+# Photo by <a href="https://unsplash.com/@redaska?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">steve pancrate</a> on <a href="https://unsplash.com/s/photos/building-lights?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Unsplash</a>
+
+```
+<br>
+
+**Lunar Radiance** 
+<br>
+The moon is a large roundish rock that has influenced culture and inspired people's curiosity for as long as we've been around. We've always cared about the moon because it reflects the radiance of the sun on the Earth. This reflectance means that we can see it on an otherwise dark night. Due to the orbit patterns of these three celestial bodies, we end up with about half of each month being darker than the other half. The effects of lunar radiance are substantial in darker areas, especially when combined with freshly fallen snow. Our `counts` data does not tell us anything about the date of the image captured, but we'll cross our fingers and assume it's normally distributed. Therefore, the more observations we get, the less we need to worry about the lunar radiance making places look brighter than they are. 
+<br>
+
+```{r block3, echo = FALSE}
+knitr::include_graphics("data/pngsForMarkdown/moonSnow.jpg", error = F)
+# Photo by <a href="https://unsplash.com/@jevanleith?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Evan Leith</a> on <a href="https://unsplash.com/s/photos/moonlight?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Unsplash</a>
+
+
+```
+<br>
+
+**Cloud Cover** 
+<br> 
+
+Clouds affect the night lights data in two ways; they block and diffuse the radiance. 
+
+If the clouds are dense, they will block the light entirely. The VIIRS data utilizes an infrared band cloud mask, which captures these dense features. We don't get any information about night lights for those evenings in our monthly averages. In a humid place like southeast Texas, we can expect to have a large portion of our daily data obscured by clouds. 
+
+Low diffuse clouds and fog can diffuse the radiance and spread it out over a larger area. This means that bright areas are dimmed, and darker areas can appear brighter. These clouds are close to the same temperature as the Earth's surface, so they are not effectively captured by the infrared-based cloud mask. It's best to assume some of this fuzziness from the clouds will be part of the monthly averages. Same as before, the more observations, the less that fuzziness will affect the average. 
+
+<br>
+```{r block4, echo = FALSE}
+knitr::include_graphics("data/pngsForMarkdown/texasClouds.png", error = F)
+# https://www.weather-us.com/en/texas-usa/houston-climate#cloud
+```
+
+<br>
+
+#### Question: Given these three observations and what you know about mathematics; what would be a reasonable minimum number of observations to use to trust a mean monthly value?
+
+
+### Investigating the Counts Data? 
+
+To tackle this question, we're probably going to need to understand exactly what the `counts` data is all about. So let's get started by setting up our environment. 
+
+<br>
+```{r block5}
+# use the same packageLoad function from lesspm 1 to read in the necessary packages
+source("installPackages.R") 
+
+packageLoad(c("sf", "terra", "dplyr", "tmap", "plotly"))
+
+```
+<br>
+
+Now we will pull the `counts` files. 
+
+<br>
+```{r block6}
+# grab all counts images
+counts <- list.files(path = "intermediateGeospatialR/data/nightLights",
+                     pattern = "_counts.tif", 
+                     full.names = TRUE)
+counts
+```
+
+<br>
+
+We have not processed these images at all, so they are still as big as Texas (or only as small as 40% of Alaska, however you want to look at it). Lets look at the properties of these images
+
+<br>
+```{r block7}
+# read in image 
+c1 <- terra::rast(counts[1])
+c1
+
+qtm(c1)
+```
+<br>
+
+Looking at the dimensions, there are over 500,000 observations in the image, and the values range from 2 to 20. Five hundred thousand elements (i.e., pixels) is not that large for raster imagery, but it's more than we need to carry around for this exploratory work. For further analysis, We want to cut down this image to the extent of each of our counties of interest. Let's test out that methodology with just one of our counties first, using Bexar County. 
+
+<br>
+```{r block8}
+# grab a radiance file we processed in lesson 1 for one of our counties
+bexarRad <- list.files(path = "intermediateGeospatialR/data/nightLights/Bexar",
+                     pattern = ".tif", 
+                     full.names = TRUE, 
+                     recursive = TRUE)
+
+# print to find an image from a county
+bexarRad[1:10]
+```
+<br>
+
+Since all of these images have the same spatial properties, read in one of them and use it to crop the state wide counts data. Write out the code yourself before checking the answer
+
+<br> 
+<details>
+  <summary>Answer</summary>
+```{r block9}
+# read in county processed image 
+r1 <- terra::rast(bexarRad[1])
+# crop the state wide counts raster
+c2 <- c1 %>%
+  terra::crop(r1)
+
+# plot cropped counts values
+## if you are still in view/interactive tmap mode, run:
+#tmap_mode(mode = "plot")
+qtm(c2)
+```
+</details> 
+
+<br>
+
+This cut the area of interest down significantly. If we print the object we can see the total number of observations 
+```{r block10}
+c2
+```
+
+
+We're down to ~1,600 observations, and the high end of the number of observations drops from 20 to 11. 
+
+The map shows us that the majority of the area seems to be below eight observations. 
+
+Also, note that we cropped the `counts` image based on the extent of the raster data from the given county. This command returns a rectangle based on the bounding box of the county raster. All this means is that some of this data will be outside of our area of interest, but since we're just trying to learn about the `counts` data, that is okay. 
+
+**Visualize the Values**
+
+There are many different ways to summarize data in a non-spatial format. Here are a few examples.
+<br>
+```{r block11}
+# grab the values of the raster object 
+vals <- terra::values(c2)
+
+# summary() base R 
+summary(vals)
+
+# plot a histogram 
+hist(vals)
+```
+<br>
+
+The data is pretty close to normally distributed. The mean is slightly higher than the median, so there is a bit of right skew. It's good to see that just a limited number of locations had only two cloud-free observations in April. That's the bare minimum needed to calculate a mean and is unlikely to account for all those potential error sources we spoke about earlier.  
+
+Let's narrow this down a little more and look specifically in the county's area by creating a mask object from our radiance raster.
+
+<br>
+```{r block12}
+cMask <- terra::mask(c2, r1)
+
+qtm(cMask)
+```
+<br>
+
+```{r block14}
+vals2 <- terra::values(cMask)
+summary(vals2)
+hist(vals2)
+```
+<br>
+
+Changing our area of interest did not significantly affect our summary statistics, so we are working at a scale that still captures the spatial variability of the observations. 
+
+## How Much of a County Counts as a County
+
+Our end goal is to use the `counts` data to limit what locations are used to compute the yearly averages. By doing so, we're also limiting how much of the overall area is actually represented for a particular month. We need to balance what we keep and what we drop. We can start by seeing what proportion of the county we are reporting on if we were to filter at various levels observed in the `counts` data. 
+
+<br>
+```{r block15}
+# pull total number of observations
+vals_noNA <- vals2[!is.na(vals2)]
+
+total <- length(vals_noNA)
+
+# get the range of values for all the observations 
+seq1 <- seq(min(vals_noNA),max(vals_noNA), by =1 )
+```
+<br>
+
+For each element in the range of count values, we want to keep all values with at least that many observations from the current list of values and determine the change in the total elements so we can calculate a change in the area. This is a great place for a function, as we're applying the same process for each element in the sequence.
+
+<br>
+```{r block16}
+getArea <- function(values,  index){
+  ### values: vector of numerical features 
+  ### index: numerical value to filter on 
+  
+  # add na clause just to be safe 
+  values <- values[!is.na(values)]
+  # get total 
+  total <- length(values)
+  # get new values based on index
+  vals_new <- values[values >= index]
+  # calc the percentage of pixels that are left
+  percent <- 100*(length(vals_new)/ total)
+  return(percent)
+}
+```
+<br>
+This function performs a numerical filter on the vector of values and returns a percentage, which in this case represents the percentage of pixels (or area) left if we filter on that cut-off value. We could translate this to an area measurement using arithmetic based on our raster dimensions and pixel size, however keeping it as a percentage seems easier to work with. 
+
+Now let's apply the function over our range of index/cut-off values and store the outputs in a dataframe.
+<br>
+```{r block17}
+# create an empty dataframe to store content 
+df <- data.frame(matrix(nrow = length(seq1), ncol = 2))
+names(df) <- c("filter", "percent_area")
+
+# assign our cut-off values to the filter column 
+df$filter <- seq1
+
+for(i in seq_along(seq1)){
+  # index row position using i, and put output in the percent area column
+  df[i, "percent_area"] <- getArea(values = vals_noNA, index = seq1[i])
+}
+
+df
+```
+
+**We've Got a Number** 
+
+
+Based on this test case, we can sense that dropping all locations with less than 5 observations still gives us 90% of the county to work with. The next question is: how would applying such a filter affect the amount of nighttime lights observed at the county level?
+
+This is a tricky question because we don't know anything about where the locations with less than 5 observations are at this point. We've been conducting these tests on non-spatial data. 
+We also know that there are locations in the county that are very bright and many more, that are relatively dark (urban vs. rural areas). So, at a 10% reduction, we're probably not going to see a big change in the mean and median of all the values in the county. But there is no way of knowing without trying it out. 
+
+We can start testing this question by bringing the spatial data back in and adapting our for-loop from above.  
+
+<br>
+```{r block19}
+# create a dataframe to store content 
+df <- data.frame(matrix(nrow = length(seq1), ncol = 4))
+### adding new columns for mean and median 
+names(df) <- c("filter", "percent_area", "mean", "median")
+# assign the filter element because we have it already 
+df$filter <- seq1
+```
+<br>
+We've added new columns to our data frame to store the mean and median radiance values for the county. So far, we've been working with `counts` only, so we will need to bring the radiance image into the loop as well. 
+<br>
+```{r block20}
+# Check to make sure the original feature we read in matches our month of interest 
+r1
+c1
+```
+<br>
+We got lucky here, but we'll need to find a way to ensure the count and radiance image match temporally at some point. For now, let's figure out how to do this once. We start by drafting out the work flow. 
+<br>
+```{r block21, eval = FALSE}
+## Note: speculating on workflow, DO NOT RUN
+i <- "filter level"
+
+## create a mask of the counts layer by filtering out all pixels with less observations than our index value 
+counts[counts < i] <- NA
+
+## use the previous object to mask the radiance layer 
+rad1 <- terra::mask(rad, counts) 
+
+## get all non-NA values of the masked radiance image 
+rad_vals <- terra::values(rad1)
+rad_vals <- rad_vals[!is.na(rad_vals)]
+## calculate mean and median 
+df$mean <- mean(rad_vals)
+df$median <- median(rad_vals)
+
+
+```
+<br>
+
+Alright, so we will need the clip and mask the monthly radiance images by the counts raster for each month. Then we can apply the same methods we've used before to derive the mean and median radiance at the county level. Since we will be doing this process more than once, lets write it as a function. 
+
+<br>
+```{r block22}
+radMeanAndMedian <- function(countRaster, radianceRaster, index){
+  ## create a mask of the counts layer 
+  countRaster[countRaster < index] <- NA
+
+  ##  apply the mask to the radiance layer 
+  rad1 <- terra::mask(radianceRaster, countRaster) 
+  
+  ## get all non-NA values of the masked radiance image 
+  rad_vals <- terra::values(rad1)
+  rad_vals <- rad_vals[!is.na(rad_vals)]
+  
+  ## create a vector to store outputs  
+  values <- c()
+  
+  ## calculate mean and median 
+  values[1] <- mean(rad_vals)
+  values[2] <- median(rad_vals)
+  
+  return(values)
+}
+```
+<br>
+We had to change where we are storing the mean and median values. We could return two objects, but it's may be easier to output a single feature and use indexing to access the data later. With this new function in hand, let's adjust our existing workflow to fit around it.  
+
+Remember, we are still testing this with just our temp count and radiance rasters for Bexar county for the month of April
+<br>
+```{r block23}
+# define input parameters 
+count_rastula <- cMask #our April counts raster masked to Bexar County
+rad_rast  <- r1 #our April radiance file for Bexar county 
+
+# determine sequence of filters/index values 
+count_vals <- terra::values(count_rastula)
+vals_noNA <- count_vals[!is.na(count_vals)]
+seq1 <-seq(min(vals_noNA), max(vals_noNA), by = 1)
+
+# loop over filter values
+for(i in seq_along(seq1)){
+  # run the area function
+  df[i, "percent_area"] <- getArea(values = vals_noNA, index = seq1[i])
+  
+  # run the mean median function 
+  meanMedian <- radMeanAndMedian(countRaster = count_rastula,
+                                 radianceRaster = rad_rast,
+                                 index = seq1[i])
+  
+  # a vector is returned with mean and median values, index to assign it to the correct positions 
+  df[i,3:4] <- meanMedian
+}
+
+df
+```
+<br>
+
+This looks great, now let's visualize these results.
+
+
+## Plotting the Results of the Filtering Process 
+
+
+We're going to be using a new library here called `plotly`. What makes `plotly` stand out relative to `ggplot2` is its ability to create interactive figures. This becomes particularly valuable when you're utilizing Rmd documents to generate reports of your results or when you have a lot of information to show on a single graphic. 
+
+<br>
+
+`plotly` functions utilize the `dplyr` piping structure rather then the `+` operator like `ggplot2`. Both allow you to add to existing objects.
+<br>
+```{r block25}
+p1 <- plot_ly() %>% # initiates an empty plotly figure
+  add_trace(x = df$filter, y = df$percent_area, type = 'scatter')
+p1
+```
+<br>
+The `add_trace` function allows us to add elements to the figure. In this case, we plot filter levels on the x-axis and percent area on the y-axis with the type defined as scatter. 
+
+While this is discrete data and points are the correct means of displaying it, we can add a line to this feature to visualize the trend more clearly. 
+<br>
+```{r block26}
+p2 <- plot_ly() %>%
+  add_trace(x = df$filter, y = df$percent_area, type = 'scatter', line = list(dash = 'dash', shape= "spline"))
+p2
+```
+<br>
+
+We can edit the axis labels and other layout elements within the `layout()` function
+
+<br>
+```{r block27}
+p1 <- plot_ly() %>%
+  add_trace(x = df$filter, y = df$percent_area, type = 'scatter', line = list(dash = 'dash', shape= "spline")) %>%
+    layout(xaxis = list(title = "Filter Level"),
+            yaxis = list(title = "Percentage of Coverage"))
+p1
+```
+<br>
+That looks good, but we still have two other parameters to visualize. We can add these parameters to the same figure, and specify each trace by adding a `name` to them. 
+
+
+<br>
+```{r block28}
+# mean plot 
+p2 <- plot_ly() %>%
+  add_trace(x = df$filter, y = df$percent_area, type = 'scatter', line = list(dash = 'dash', shape= "spline"), name = "Percent Coverage") %>%
+  add_trace(x = df$filter, y = df$mean, type = 'scatter', line = list(dash = 'dash', shape= "spline"), name = "Mean Radiance") %>% 
+  add_trace(x = df$filter, y = df$median, type = 'scatter', line = list(dash = 'dash', shape= "spline"), name = "Median Radiance" )%>%
+    layout(xaxis = list(title = "Filter Level"))
+
+p2
+```
+<br>
+This works, and we can start seeing relationships between the radiance values and percent coverage based on filter level. However, these three variables have different units (percent vs. radiance values). We can separate out the y-axes and still combine the three plots into a single one with `subplot`.
+
+<br>
+```{r block29}
+p1 <- plot_ly() %>%
+  add_trace(x = df$filter, y = df$percent_area, type = 'scatter', line = list(dash = 'dash', shape= "spline"), name = "Percent Coverage") %>%
+    layout(xaxis = list(title = "Filter Level"),
+           yaxis = list(title = "Percent of Coverage"))
+
+p2 <- plot_ly() %>%
+  add_trace(x = df$filter, y = df$mean, type = 'scatter', line = list(dash = 'dash', shape= "spline"), name = "Mean Radiance") %>% 
+    layout(xaxis = list(title = "Filter Level"),
+           yaxis = list(title = "Mean"))
+  
+p3 <- plot_ly() %>%
+  add_trace(x = df$filter, y = df$median, type = 'scatter', line = list(dash = 'dash', shape= "spline"), name = "Median Radiance" )%>%
+    layout(xaxis = list(title = "Filter Level"),
+           yaxis = list(title = "Median"))
+  
+
+p <- plotly::subplot(p1,p2,p3, nrows = 3, shareX = TRUE, titleY = TRUE)
+p 
+```
+<br>
+Due to the shape of the data, we chose to stack the plots vertically by calling `nrows = 3`. This method works particularly well because all plots share the same x-axis, making for a nice compact plot. The `titleY` parameter carries the titles from the original plots through to the final figure. 
+
+With this visualization we start to see that even though we lose a lot of area at filter level 6, the mean and median for the county remain consistent. This means that we are still capturing the general quality of the night light at the county level spatial scale. 68% of the county could be a fair sample size for the county as a whole. 
+
+#### Question: What is your ideal number of observations to calculate a mean? If we filter our datasets to locations with 6 or more features, what will we lose?
+<details>
+  <summary>Click for an Answer</summary>
+  <blockquote> 
+  In the ongoing project on which this lesson is [based](https://github.com/dcarver1/covidNightLights), the group determine that 10 observations per month would be required for assuming a quality monthly signal. This meant that we had to transfer our area of interest from Houston to the more arid cities of Las Vegas, Phoenix, and Tuscon. There is always a balance in these choices and as long as you can justify why you made the decision feel confident in rolling with it. 
+  </blockquote>
+</details> 
+
+
+## Summarizing the Results at the County Level 
+
+At this point, we have a process developed for generating a data-rich visualization that shows how filtering the radiance data based on the number of observations changes the average radiance observed at the county level. This product is best suited for aiding a discussion around the quantity and quality of observations. So far, we've made it work once, on one month, for one county. If we wanted to be comprehensive in our assessment, we would need to apply this process across; 
+
+- Three counties 
+- Twelve months
+
+We could structure this out within a series of loops, but evaluating the result at the county level is probably more appropriate. It's a concrete spatial scale that much of our current analysis is built on. As the results we want to show gain utility from interactivity, we can produce them via an .rmd to HTML rather than an R script. A bonus of the rmd process is that we can call the document directly from an R script in a similar way we call in a function. We have put this workflow in the `intermediateGeospatialR/extra_lessons/` folder as bonus material if you'd like to keep working on this on your own time.
+
+
+
